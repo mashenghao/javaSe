@@ -1,14 +1,8 @@
 package cn.mh;
 
-import org.junit.Test;
-
-import javax.swing.tree.TreeNode;
-import java.io.ObjectInputValidation;
 import java.io.Serializable;
-import java.util.LinkedHashMap;
 import java.util.Objects;
 import java.util.Set;
-import java.util.TreeMap;
 
 /**
  * HashMap的具体实现
@@ -38,7 +32,7 @@ public class HashMap<K, V> extends AbstractMap<K, V> implements Map<K, V>, Clone
 
     int size; //元素个数
 
-    Set<Map.Entry> entrySet; //给entrySet() 方法做缓存
+    Set<Map.Entry<K, V>> entrySet; //给entrySet() 方法做缓存
 
     public HashMap(double loadFactor) {
         this(loadFactor, DEFAULT_INITIAL_CAPACITY);
@@ -65,7 +59,7 @@ public class HashMap<K, V> extends AbstractMap<K, V> implements Map<K, V>, Clone
         this.loadFactor = loadFactor;
 
         this.initCapacity = tableSizeFor(initCapacity);
-        this.threshold = (int) (loadFactor * initCapacity);
+        this.threshold = (int) (loadFactor * this.initCapacity);
     }
 
 
@@ -143,45 +137,235 @@ public class HashMap<K, V> extends AbstractMap<K, V> implements Map<K, V>, Clone
         return null;
     }
 
+    /**
+     * 初始化和扩容
+     *
+     * @return
+     */
     Node<K, V>[] resize() {
-        table = new Node[initCapacity];
-        return table;
+        Node<K, V>[] tab = table;
+
+        int oldCap, newCap, oldThr = threshold, newThr = threshold;
+        Node<K, V> p;
+        if (tab == null || (oldCap = tab.length) == 0) {//初始化
+            tab = new Node[initCapacity];
+            table = tab;
+        } else {//扩容
+            if (oldCap >= MAXIMUM_CAPACITY) {//容量上限
+                threshold = Integer.MAX_VALUE;
+                return tab;
+            }
+            if ((newCap = (oldCap << 1)) <= MAXIMUM_CAPACITY) {
+                newThr = oldThr << 1; // double threshold
+                threshold = newThr;
+            }
+            Node<K, V>[] newTab = new Node[newCap];
+            //拷贝数据
+            for (int i = 0; i < oldCap; i++) {
+
+                if ((p = tab[i]) != null) {
+                    if (p.next == null) {
+                        newTab[(newCap - 1) & p.hash] = p;
+                    } else {//带有链表，则要拆分链表，进行分组
+                        Node<K, V> loHead = null, loTail = null;
+                        Node<K, V> hiHead = null, hiTail = null;
+                        do {
+                            if ((oldCap & p.hash) == 0) {//需要分组，当hash是的最高位为0时，才成立，否则其他就是旧容量
+                                if (loHead == null)
+                                    loHead = p;
+                                else
+                                    loTail.next = p;
+                                loTail = p;
+                            } else {
+                                if (hiHead == null)
+                                    hiHead = p;
+                                else
+                                    hiTail.next = p;
+                                hiTail = p;
+                            }
+                        } while ((p = p.next) != null);
+                        if (loHead != null) {
+                            loTail.next = null;
+                            newTab[i] = loHead;
+                        }
+                        if (hiHead != null) {
+                            hiTail.next = null;
+                            newTab[i + oldCap] = hiHead;
+                        }
+                    }
+                }
+
+            }
+
+            System.out.println("12346");
+            table = newTab;
+            return newTab;
+        }
+        return tab;
     }
 
-    @Override
+    /**
+     * 获取值
+     *
+     * @param key
+     * @return
+     */
     public V get(Object key) {
-        return super.get(key);
+
+        Node<K, V> e;
+        return (e = getNode(hash(key), key)) == null ? null : e.getValue();
+    }
+
+    private Node<K, V> getNode(int hash, Object key) {
+        Node<K, V>[] tab = table;
+        int n;
+        Node<K, V> p;
+        K k;
+        if (tab != null && (n = tab.length) > 0
+                && (p = tab[(n - 1) & hash]) != null) {
+            //总是检查第一个元素是否命中
+            if (p.hash == hash &&
+                    (key == (k = p.key) || key != null && key.equals(k)))
+                return p;
+            //第一个不是，检查链表中的其他元素
+            while ((p = p.next) != null) {
+                if (p.hash == hash &&
+                        (key == (k = p.key) || key != null && key.equals(k)))
+                    return p;
+            }
+        }
+        return null;
     }
 
     @Override
     public int size() {
-        return super.size();
+        return size;
     }
 
     @Override
     public boolean containsKey(Object key) {
-        return super.containsKey(key);
+        return get(key) != null;
     }
 
     @Override
     public boolean containsValue(Object value) {
-        return super.containsValue(value);
+        Node<K, V>[] tab;
+        Node<K, V> p;
+        if ((tab = table) != null && size > 0) {
+            for (int i = 0; i < tab.length; i++) {
+                if ((p = tab[i]) != null) {
+                    while (p != null) {
+                        if (p.value == value ||
+                                (value != null && value.equals(p.value)))
+                            return true;
+                        p = p.next;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
-    @Override
+
     public V remove(Object key) {
-        return super.remove(key);
+
+        Node<K, V> e;
+        return (e = removeNode(hash(key), key)) == null ? null : e.getValue();
     }
+
+    /**
+     * 删除节点元素
+     *
+     * @param hash
+     * @param key
+     * @return
+     */
+    public Node<K, V> removeNode(int hash, Object key) {
+
+        Node<K, V>[] tab;
+        int n;
+        K k;
+        Node<K, V> p, node = null, e;
+        if ((tab = table) == null || (n = tab.length) == 0) {
+            return null;
+        }
+        if ((p = tab[(n - 1) & hash]) != null) {
+            if (p.hash == hash && ((k = p.key) == key || key != null && key.equals(k))) {//首元素命中
+                node = p;
+            } else {
+                e = p;
+                while ((e = e.next) != null) {
+
+                    if (e.hash == hash && ((k = e.key) == key || key != null && key.equals(k))) {
+                        node = e;
+                        break;
+                    }
+                    p = e;
+                }
+            }
+            if (node != null) {
+                if (p == node) {
+                    tab[(n - 1) & p.hash] = p.next;
+                } else {
+                    p.next = node.next;
+                }
+
+                ++modCount;
+                --size;
+
+                return node;
+
+            }
+
+        }
+        return null;
+    }
+
 
     @Override
     public void clear() {
         super.clear();
     }
 
-    @Override
+    /**
+     * 迭代所有的集合中的数据
+     *
+     * @return
+     */
     public Set<Entry<K, V>> entrySet() {
-        return null;
+
+        Set<Entry<K, V>> es;
+        if ((es = entrySet) == null) {
+            //es = new EntrySet();
+            entrySet = es;
+        }
+        return es;
     }
+
+    /*class EntrySet extends AbstractSet<Entry<K, V>> {
+
+        @Override
+        public Iterator<Entry<K, V>> iterator() {
+            return new EntryIterator();
+        }
+
+        @Override
+        public int size() {
+            return HashMap.this.size;
+        }
+
+        @Override
+        public boolean isEmpty() {
+            return super.isEmpty();
+        }
+
+        @Override
+        public boolean contains(Object o) {
+            return super.contains(o);
+        }
+    }
+
+*/
 
 
     /**
