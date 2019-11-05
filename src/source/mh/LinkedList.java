@@ -1,4 +1,4 @@
-package cn.mh;
+package source.mh;
 
 
 import java.io.Serializable;
